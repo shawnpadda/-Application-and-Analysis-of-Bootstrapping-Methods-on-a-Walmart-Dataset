@@ -1,0 +1,479 @@
+---
+title: "Project stat641"
+author: "Sirpreet Padda"
+date: "2/25/2022"
+output:
+  pdf_document: default
+---
+********************************************************************************
+                                                    First Section
+********************************************************************************
+
+# Load all of the essential libraries.
+```{r}
+# To load all of the packages in R, use the p_load function from 
+# the pacman library.
+library(pacman)
+p_load(car, tidyverse, MASS,bootstrap,boot, car,corrplot, infer,broom,purrr,
+       rsample)
+```
+
+# Load the dataset.
+```{r}
+# Create a variable called Walmart to store the dataset.
+Walmart <- read_csv("/Users/sirpreetpadda/Desktop/Desktop stuff 2022/STAT 641/Stat 641 Final Project on Walmart/Walmart.csv")
+
+# To retrieve the first four rows, use the head() function.
+head(Walmart,4)
+
+# To print the dataset's dimensions, use the dim() function.
+dim(Walmart)
+```
+The dataset's dimensions are 6435*8. The dataset has been successfully loaded.
+
+# Research Questions
+* What is the relationship between the response (Weekly sales) and all other chosen predictors? Compare the standard error and 95% confidence interval of the classical fitted regression model with the residual bootstrap resampling and observational bootstrap resampling regression methods.
+
+* Conduct hypothesis testing using the response (Weekly sales) and the factor (Holiday Flag) with an infer package. 
+
+
+# Data Preprocessing Step
+```{r}
+# To check for na values, use the is.na() function.
+sum(is.na(Walmart))
+
+# Build a pipeline with the Walmart dataset and store it in a 
+# new variable called Walmart.1. 
+Walmart.1 <- Walmart %>%
+      dplyr::select(Weekly_Sales, Temperature, Fuel_Price, CPI, Unemployment) %>%
+      drop_na()
+
+# To observe the types of variables, use the glimpse() function.
+glimpse(Walmart.1)
+```
+
+# Fit a multiple linear regression model using all the predictors.
+```{r}
+# Create a fit variable to hold the multiple linear regression model.
+fit <- lm(Weekly_Sales ~ ., data = Walmart.1)
+
+# To print the summary statistics, use the summary() function.
+summary(fit)
+```
+According to the summary table, all other factors are statistically significant, except the fuel price. I will drop the fuel price and refit the model in the next step.
+
+
+```{r}
+# Use a backward stepwise selection technique with AIC.
+Step <- step(fit, trace = FALSE)
+coef(Step)
+
+# Remove insignificant predictors from the multiple linear regression 
+# model, such as fuel price using an indexing position.
+Walmart.2 <- Walmart.1[,-3]
+
+# To retrieve the first six rows, use the head() function.
+head(Walmart.2)
+```
+Now, I have three predictors and one response. 
+
+```{r}
+# Determine the predictor-response correlations. Round up by 2 decimal places.
+round(cor(Walmart.2),2)
+```
+
+I utilized the correlation matrix which showed a truly positive and true negative relationship. As it can be seen above in the correlation matrix, all the predictors such as temperature, CPI, unemployment have a negative association with the response (Weekly sales) variable. Therefore, I can deduce that the sales of the 45 Walmart stores were being affected by these significant variables.
+
+# Exploratory Data Analysis 
+```{r warning=FALSE}
+# Using the corrplot package's corrplot() function. 
+# Make a visualization of the correlation matrix.
+corrplot(cor(Walmart.2), method = "number", order = "hclust", col = 1:4, 
+         bg = "lightgrey")
+```
+
+I used the correlation matrix plot to indicate the true positive and true negative relationship between the response (weekly sales) and other predictor variables like Temperature, CPI, and Unemployment. 
+
+```{r}
+# Create a scatter plot of temperature versus weekly sales on a 
+# logarithmic scale using a Walmart dataset pipeline. 
+#The data points are represented by a holiday flag.
+Walmart %>%
+  mutate(Holiday_Flag = ifelse(Holiday_Flag == 1, "Holiday Week", 
+                               "Non-holiday Week"))%>%
+ggplot(aes(x = log(Temperature), y = log(Weekly_Sales))) + 
+  geom_point(aes(col = Holiday_Flag),alpha = 0.4) + geom_smooth(method = "lm", 
+                                              se = FALSE, col = "slategrey") + 
+  labs(x = "Temperature", y = "Weekly Sales", 
+       title = "Scatter plot of Weekly Sales Versus Temperature", 
+       col = "Holiday Flag") 
+```
+
+I used the logarithmic scale to show the better relationship among weekly sales and temperature. The scatter plot shows a negative relationship between weekly sales and temperature using a logarithmic scale. As the temperature rises, the weekly sales tends to decline. The colors of the points are associated with each factor level of a holiday flag in the legend. 
+
+
+```{r}
+# Create a bar plot of holiday flags with two categories: holiday week 
+# and non-holiday week, relying on Walmart store weekly sales in billions.
+# Make use of Walmart dataset pipeline.
+Walmart %>%
+  mutate(Holiday_Flag = factor(ifelse(Holiday_Flag == 1, 
+                                      "Holiday week", "Non-holiday Week"))) %>%
+  group_by(Holiday_Flag) %>%
+ggplot(aes(y = Weekly_Sales/1000000000,x = Holiday_Flag)) + 
+  geom_bar(stat = "identity", aes(col = Holiday_Flag)) + 
+  labs(y = "Weekly Sales (In Billion USD)", x = "Holiday Flag", 
+       title = "Bar Plot of Weekly Sales of the Walmart Stores", 
+       col = "Holiday Flag ") + 
+  scale_y_continuous(breaks = seq(from = 0,to = 8, by = 1)) 
+```
+
+I utilized a bar plot to show the weekly sales (in billions of dollars) of the 45 Walmart stores in the United States. A bar plot shows that Walmart stores only earned 0.5 (in billion USD) income during special events and public holidays. During non-holiday weeks, Walmart stores made a profit of 6.5 (in billion USD). As a result, Walmart suffered a 6 (in billion USD) drop in weekly sales due to the special events and public holidays.
+
+```{r warning=FALSE}
+# To access the variables in the data, use the attach() function.
+attach(Walmart.1)
+
+# To see the relationship between variables, make a scatterplot matrix.
+scatterplotMatrix(~Weekly_Sales + Temperature + Fuel_Price + CPI + Unemployment, 
+                  smooth = FALSE, cex = 0.2,regLine = list(col="green"),lty = 1)
+```
+
+I utilized the scatterplot matrix to understand the relationship among relevant variables in the dataset. A scatterplot matrix depicts that few variables have a strong positive or negative relationship. However, the remaining variables showed a neutral, slight negative, and slight positive relationship with the response. The smooth density curve indicates that the data points are extremely varied.
+
+# Fit a multiple linear regression model using the significant variables.
+```{r}
+# Create a variable called fit2 that holds the multiple linear regression 
+# model with selected variables.
+fit2 <- lm(Weekly_Sales ~ Temperature + CPI + Unemployment, data = Walmart.2)
+
+# Using the summary() function, print the summary statistics.
+summary(fit2)
+```
+I used the summary() function to print the summary statistic of the fitted model. I discovered that the p-value is very small, and all the predictors are significant. Moreover, I found about 2.3% of the variability in y (weekly sales) is explained by the multiple linear regression model. As a result of the lower adjusted R-squared, the multiple linear regression model is not a good fit.
+
+```{r}
+# Diagnostic Plots
+par(mfrow = c(2,2))
+# With the plot() function, examine the diagnostic plots.
+plot(fit2, which = 1:4)
+
+# Find the outliers length.
+ind <- length(which(abs(rstandard(fit2))>2))
+ind
+```
+
+I ran a diagnostic check on the multiple linear regression fitted model to check the "LINE" assumptions (linearity, independence, normality, and constant variance). First, the residuals versus the fitted values plot and the standardized residuals versus the fitted values show no discernible trend or non-constant variance, which implies that the points are randomly scattered around 0. The assumptions of linearity and constant variance appear satisfied. Second, the Q-Q plot indicates deviations in the upper tail and a slightly skewed right (or positively skewed) plot. Due to the large dataset, there are some extreme outliers in the data. As a result, the normality assumption is not adequately satisfied. There are two ways to improve the linear model: (1) transformation or (2) bootstrapping methods (which are least affected by outliers). In this project, I will use bootstrapping methods. Lastly, Cook's distance indicates a 2764th data point, which is influential. 
+
+# Check for multicollinearity Issues.
+```{r}
+# Using the variance inflation factor VIF(), check for multicollinearity Issues.
+# Round up by 2 decimal places.
+VIF <- round(vif(fit2),2)
+
+# Print the results.
+print(ifelse(VIF > 5, "Multicollinearity Issue",VIF))
+```
+
+I used the variance inflation factor (VIF) measure to check for multicollinearity issues. I followed the rule of thumb If the VIF exceeds the five cut-offs, then there is a multicollinearity issue. As a result, I found no multicollinearity issue among the predictor variables.
+
+
+# Bootstrapping Methods
+## Apply the Observational resampling / random x resampling method.
+```{r}
+# Set the seed to reproduce the results.
+set.seed(222)
+
+# Create a function named boot_c that takes data and i (indices) as parameters. 
+# Fit a multiple linear regression model using ith indices. 
+# The function boot_c returns the coefficients of the multiple 
+# regression linear model.
+boot_c <- function(data, i){
+  dat <- data[i,]
+  # Fit a multiple linear regression model.
+  mod <- lm(Weekly_Sales ~ Temperature + CPI + Unemployment, data = dat)
+  # Return coefficient vector using the coef() function.
+  return(coef(mod))
+}
+
+# Create a variable named boot.random that calls the boot() function with 
+# certain arguments like data, statistics of interest, and R 
+# (number of bootstrap samples).
+boot.random <- boot(data = Walmart.2, statistic = boot_c, R = 8000)
+
+# To print the results, call boot.random variable.
+boot.random
+```
+Here, I used the observational resampling technique. The bootstrap statistic in the summary table reveals the bootstrap estimates, their bias, and their standard errors.
+
+# Findings
+On comparing, the bootstrap estimates to the estimates of the traditional linear model, the bootstrap estimates are identical. However, on comparing the standard error of the bootstrap estimates to the standard errors of the ordinary least square estimates, I discovered that a couple of the bootstrap estimates have smaller standard errors while others have a slightly bigger standard error than the regular/traditional linear model.
+
+# Visualize the bootstrap replicates.
+```{r}
+# To check the diagnostic plots, use the plot() function.
+plot(boot.random, index = 1) # index = 1 represents intercept (beta_0 hat)
+plot(boot.random, index = 2) # index = 2 represents beta_1 hat
+plot(boot.random, index = 3) # index = 3 represents beta_2 hat
+plot(boot.random, index = 4) # index = 4 represents beta_3 hat
+```
+
+I visualized the bootstrap replicates. The results shown above for each indexing position (Indexing position 1 represents $\hat{\beta_0}$, Indexing position 2 represents $\hat{\beta_1}$, Indexing position 3 represents $\hat{\beta_2}$, Indexing position 4 represents $\hat{\beta_3}$) appears pretty normal. Each histogram plot showed the symmetric distribution of the bootstrap replicates for $\hat{\beta_0},\hat{\beta_1},\hat{\beta_2},\ and \ \hat{\beta_3}$.
+
+```{r}
+# 95% confidence interval
+confint(fit2)
+```
+
+
+```{r}
+# Using the boot.ci() function, construct a 95 percent bootstrap confidence 
+# interval. Pass arguments such as boot.random, indexing position, confidence 
+# level, and type ("norm","perc","bca").
+boot.ci(boot.random, index = 2, conf = 0.95, type = c("norm","perc","bca"))
+boot.ci(boot.random, index = 3, conf = 0.95, type = c("norm","perc","bca"))
+```
+The boot.ci() function provides us the five types of confidence intervals, but I only utilized the three most commonly applied confidence intervals (Normal, Percentile, Bias corrected, and accelerated (Bca)).In general, the Bca confidence interval produces better results than the other confidence intervals specified. The Bca confidence interval incorporates a bias-correction factor and an acceleration factor to correct the bias and skewness of the bootstrap estimates.
+
+*Interpretation for the normal confidence interval:
+The normal confidence interval assumes the normality assumption. Here, we are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta_1}$ is between -1740.1 and -158.7 and the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ is between -1947 and -1151. I compared these results with a traditional confidence interval calculated with a confint() function. I discovered that the 95% normal bootstrap confidence interval values are marginally different from the traditional 95% confidence interval. The 95% normal bootstrap confidence interval produced narrower confidence interval range than the regular model 95% confidence interval.
+
+* Interpretation for the percentile confidence interval:
+Here, we are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta_1}$ is between -1745.0 and -168.5  and the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ is between -1947 and -1152. I compared these results to a traditional confidence interval calculated with a confint() function. I found that the 95% percentile bootstrap confidence interval has a shorter range than the classical 95% confidence interval. However, the values are different.
+
+* Interpretation for the bias corrected and accelerated (Bca) confidence interval:
+Here, we are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta_1}$ is between -1764.2 and -185.1  and the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ is between -1941 and -1148. I compared these results to a traditional confidence interval calculated with a confint function. I found that the 95% bias corrected and accelerated (Bca) bootstrap confidence interval values has a narrow range and subtly different values than the traditional 95% confidence interval.
+
+Although the 95% percentile bootstrap confidence interval has slightly wider range among other confidence intervals, but I would pick a bias-corrected and accelerated (Bca) 95% bootstrap confidence interval using an observational resampling technique for the Walmart dataset. Since it is bias corrected.
+
+# Apply the residual resampling / fixed x resampling method.
+```{r}
+# Set the seed to reproduce the results.
+set.seed(222)
+
+# The fitted multiple linear regression model is stored in the fit2 variable. 
+# To extract the fitted values from fit2, use the fitted() function. 
+# Save the results to a new variable named fitt.
+fitt <- fitted(fit2)
+
+# Similarly use the residuals() function to extract the residual 
+# values from fit2.
+e <- residuals(fit2)
+
+# Using fit2, create a design matrix X.
+X <- model.matrix(fit2)
+
+# Make a model-holding function called boot fun fixed. Pass some arguments, 
+# such as data and i. (indices). Returns the coefficients.
+boot_fun_fixed <- function(data, i){
+  y_b <- fitt + e[i]
+  # Fit a model excluding Intercept.
+  mod <- lm(y_b ~ X - 1)
+  return(coef(mod))
+}
+
+# Create a variable named boot.fixed that calls the boot() function 
+# with certain arguments like data, statistics of interest, and R 
+# (number of bootstrap samples).
+boot.fixed <- boot(Walmart.2, boot_fun_fixed, R = 8000) 
+
+# To print the results, call boot.fixed variable.
+boot.fixed
+```
+
+I utilized residual resampling in this context. The summary table's bootstrap statistic displays the bootstrap estimates, their bias, and their standard errors.
+
+# Findings
+While comparing bootstrap estimates to traditional linear model estimates, the bootstrap estimates are identical. However, when the standard error of the bootstrap estimates is compared to the standard error of ordinary least square estimates of the linear model, I noticed that the standard error of the bootstrap estimations have lower standard error than the classical model. 
+
+# Visualize the bootstrap replicates.
+```{r}
+# To check the diagnostic plots, use the plot() function.
+plot(boot.fixed, index = 1)
+plot(boot.fixed, index = 2)
+plot(boot.fixed, index = 3)
+plot(boot.fixed, index = 4)
+```
+The bootstrap replicates were presented graphically. The above shown results for each indexing position (Indexing position 1 represents $\hat{\beta_0}$, Indexing position 2 represents $\hat{\beta_1}$, Indexing position 3 represents $\hat{\beta_2}$, and Indexing position 4 represents $\hat{\beta_3}$) appear to be fairly normal. Each histogram plot showed the symmetric distribution of the bootstrap replicates for $\hat{\beta_0},\hat{\beta_1},\hat{\beta_2},\ and \ \hat{\beta_3}$.
+
+
+```{r}
+# Using the boot.ci() function, construct a 95 percent bootstrap confidence 
+# interval. Pass arguments such as boot.fixed, indexing position, confidence 
+# level, and type ("norm","perc","bca").
+boot.ci(boot.fixed, index = 2, conf = 0.95, type = c("norm","perc","bca"))
+boot.ci(boot.fixed, index = 3, conf = 0.95, type = c("norm","perc","bca"))
+```
+
+The boot.ci() function provides five different types of confidence intervals, but I only used the three most widely adopted (Normal, Percentile, Bias corrected, and accelerated (Bca)). In general, the Bca confidence interval produces better results than the other confidence intervals stated. The Bca confidence interval includes a bias-correction factor and an acceleration factor to rectify the bias and skewness of the bootstrap estimates.
+
+*Interpretation for the normal confidence interval:
+The normal confidence interval is based on the assumption of normality. We are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta_1}$ lies between -1707.5 and  -183.8, and the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ falls between -1923 and -1179. I compared these results with a traditional confidence interval computed with a confint() function.  As I noticed that the 95% normal bootstrap confidence values are almost identical to the traditional 95% confidence interval.
+
+* Interpretation for the percentile confidence interval:
+We are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta_1}$ is between -1693.0 and -196.3, while the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ is between -1925 and -1185. These results were compared to a traditional confidence interval produced using the confint() method. As per my investigation, the 95% percentile bootstrap confidence interval has a wider range than the traditional 95% confidence interval. However, the values are subtly different.
+
+* Interpretation for the bias corrected and accelerated (Bca) confidence interval:
+We are 95% confident that the true value of the bootstrap replicates for the coefficient $\hat{\beta _1}$ is between -1698.3 and -198.7, whereas the true value of the bootstrap replicates for the coefficient $\hat{\beta_2}$ is between -1924 and -1185. I compared these to a traditional confint function-based confidence interval. According to my findings, the 95% bias-corrected and accelerated (Bca) bootstrap confidence interval values are varies substantially from the regular 95% confidence interval. The 95% Bca confidence interval produced a narrower range than the 95% percentile bootstrap confidence interval. 
+
+Although the Normal bootstrap 95% confidence interval is nearly identical to the regular 95% confidence interval range, I would advocate applying a bias-corrected and accelerated (Bca) 95% bootstrap confidence interval along with a residual resampling technique. Since it corrects the skewness and bias.
+
+
+```{r}
+# Add smooth density curve plots with indexing position 2 
+# using the plot() function.
+par(mfrow = c(1,2), mar = c(2,2,2,2))
+plot(density(boot.random$t[,2]), main = "Density Plot (x is random,i=2)")# i is an indexing position.
+plot(density(boot.fixed$t[,2]),main = "Density Plot (x is fixed,i=2)")# i is an indexing position.
+```
+
+After visualizing the smooth density for each model. I discovered that the smooth density curve of the residual resampling appeared smoother distribution by smoothing out the noise and reliable. Also, after examining the standard error of the bootstrap estimates, I found that the standard error of the bootstrap estimates of the residual resampling reflected very close results to the traditional linear model. Thus, I deduce that residual resampling is better fit for the Walmart dataset.
+
+
+
+
+
+
+
+\newpage
+********************************************************************************
+                                                  Second Section
+********************************************************************************
+# Address the second research question.
+```{r}
+# Convert a variable called holiday flag to a factor using the 
+# Walmart1 pipeline. Store into a new variable called Walmart2.
+Walmart.3 <- Walmart %>%
+  dplyr::select(Weekly_Sales, Holiday_Flag) %>%
+  # Use mutate () function from the dplyr package to alter
+  # holiday flag variable.
+  mutate(Holiday_Flag = factor(Holiday_Flag))
+```
+
+```{r}
+# To incorporate the pipeline, create a new variable called Walmart2.
+Walmart.3 %>%
+  # Use group_by() function to perform data operations on groups. 
+  # Pass an argument holiday flag.
+  group_by(Holiday_Flag) %>%
+  # On the grouped data by holiday flag, use the summarise() function. 
+  # Compute the mean of each group.
+  summarise(
+    count = n(),
+    Mean = round(mean(Weekly_Sales),2)
+  )
+# Using the ggplot2 approach, visualize the bar plot.
+Walmart.3 %>%
+  ggplot(aes(x = Holiday_Flag,fill = Weekly_Sales)) + geom_bar() + 
+  labs(fill = "Holiday Flag")
+
+# To examine the levels of each category of holiday flag, 
+# use the table() function.
+table(Walmart.3$Holiday_Flag)
+```
+First, I grouped the data using a holiday flag variable. The holiday flag variable has two levels such as 0 represents Non-holiday week, 1 represents Holiday week. Then,  I calculated the mean and total counts for each level of a holiday flag. I discovered that the non-holiday week has 5985 observations and the holiday week has 450 Observations. After that, I used a bar plot to illustrate the data, each bar reflecting one of the holiday flag's factor levels. A bar plot also indicates an unbalanced design. As a result, it shows a True representation of the Walmart dataset.
+
+
+
+# Compute the Observed Test Statistic
+```{r}
+# Create a variable called obs_test_stat to contain the 
+# Walmart2 dataset's pipeline.
+obs_test_stat <- Walmart.3 %>%
+  # Use a specify() function to specify the variables of interest.
+  specify(Weekly_Sales ~ Holiday_Flag) %>%
+  
+  # Use a calculate() function to compute the observed test statistics.
+  calculate(stat = "diff in means", order = c(1,0))
+
+# Round up the observed test statistic by 2 decimal places.
+round(obs_test_stat,2)
+
+# To double-check, I manually computed observed test statistics. 
+# Store the results into a variable called obs_diff_mean.
+obs_diff_mean = 1122888-1041256
+obs_diff_mean
+```
+
+I used an infer package to compute the observed test statistics, which is the difference between the mean of both groups. I also double-checked the Infer package results with manual calculations. Both results agree with each other.
+
+
+
+
+# Null distribution
+Under null distribution I assume the null hypothesis is true. 
+```{r}
+# Create a null_dist variable that carries the Walmart2 pipeline.
+null_dist <- Walmart.3 %>%
+  # Use a specify() function to specify the variables of interest.
+  specify(Weekly_Sales ~ Holiday_Flag) %>%
+  
+  # To set the null equals independence, use the hypothesis() function.
+  hypothesize(null = "independence") %>%
+  
+  # Use the generate () function to generate bootstrap replicates using a 
+  # permutation resampling technique.
+  generate(reps = 1000, type = "permute") %>%
+  
+  # Use the calculate() function and pass in some arguments like 
+  # "difference in means" statistics of interest and order levels.
+  calculate(stat = "diff in means", order = c(1,0))
+
+# To retrieve the first five rows of the bootstrap replicates, 
+# use the head() function.
+head(null_dist,5)
+```
+
+I created a null distribution using the four main verbs of the infer package like specify, hypothesize, generate, and calculate. First, I used the specify verb to Specify the variables of interest from the Walmart dataset. Then, I set the null equal to independence. Next, I generated the bootstrap replicates using the permutation resampling technique. Lastly, I used the calculate verb and passed on some parameters like specifying the statistics of interest ("diff in means") and order levels related to the explanatory variable (holiday flag).
+
+I conducted a one-sided alternative hypothesis testing where the null hypothesis and alternative hypothesis are as follows:
+
+In words:
+
+$H_0:$ There is no difference in the means of the population that includes special holiday week and non-holiday week.
+
+vs.
+
+$H_1:$ There is a significant difference in the means, where the special holiday week is favored.
+
+
+In notations:
+
+$H_0 : \mu_{1} - \mu_{2} = 0$
+
+vs.
+
+$H_1 : \mu_{1} - \mu_{2} > 0$
+
+where the $\mu_{1}$ is the population of the special holiday week and the $\mu_{2}$ is the population of the non-holiday week.
+
+
+# Visualize the null distribution.
+```{r}
+# Visualize the null distribution using the visualize() function.
+null_dist %>%
+  # Visualize the null distribution using the visualize() function.
+  visualize() +
+  # To display the observed test statistics and p-value in the shaded region, 
+  # use the shade_p_value() function.
+  shade_p_value(obs_stat = obs_test_stat, direction = "right", col = "blue", 
+                lty = 1, lwd = 1)
+```
+
+
+A histogram was used to show the null distribution and shaded p-value.  I used the visualize verb from the infer package to visualize the null distribution. After studying the null distribution and seeing that the observed difference in the sample means falls outside the middle 95% of the difference distribution, the one-sided test rejects the null hypothesis at a 5% $\alpha$ level.
+
+# Compute the achieved significance level (ASL) / p-value.
+```{r}
+# By passing parameters like the observed test statistic and direction to 
+# the get p value() function, one can compute the p-value.
+null_dist %>%
+  get_p_value(obs_stat = obs_test_stat, direction = "right")
+```
+The p-value is determined to be 0.001, which is extremely small. I used the p-value approach to make the decision. Since the p-value is less than a commonly used $\alpha \ value = 0.05$. As a result, I rejected the null hypothesis. I inferred that there is a significant difference in the means, where the special holiday week is favored. 
+
+
+
+# Conclusion
+The first inference drawn from the data is that weekly sales of the 45 Walmart stores are linked to the temperature, CPI, and Unemployment. The multiple linear regression model proves the relationship between the variables by using weekly sales as the response and other economic factors such as temperature, CPI, Unemployment as explanatory variables. The weekly sales of the 45 Walmart stores were negatively influenced by the temperature, CPI, and Unemployment. The second inference is drawn on comparing the bootstrapping regression methods with the traditional regression method, and I found that the residual resampling technique works best in favor of the Walmart dataset. Also, the bias-corrected and accelerated (Bca) 95% confidence interval is considered the best fit for the Walmart dataset. Subsequently, the third inference is drawn about conducting a hypothesis testing using weekly sales as the response and the holiday flag as an explanatory variable. I rejected the null hypothesis using a computed p-value with an infer package. I found a significant difference in the means in the population, where the holiday week was favored. Also, I compared the infer package results with two-sample t-test results. The p-value was found to be the same. This project demonstrated that applying bootstrapping methods is very effective,  provides very close results to the original coefficient estimates, and is approachable. This project also ensures the reader that the bootstrapping method is much easier to comprehend the coefficients results without worrying about the "LINE" assumptions and outliers.
+
